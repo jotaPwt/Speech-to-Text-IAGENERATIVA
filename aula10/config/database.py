@@ -16,28 +16,23 @@ if not DATABASE_URL:
         "Configure a string de conexão do Neon.tech (ex: postgresql://user:pass@host/dbname?sslmode=require)."
     )
 
-# Garante o driver correto para SQLAlchemy 2.x, mesmo que a URL venha no formato antigo do Neon/Heroku
+# Garante o driver correto para SQLAlchemy 2.x usando Psycopg 3 (psycopg)
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
-elif DATABASE_URL.startswith("postgresql://") and "+psycopg2" not in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
+# Limpa o sufixo antigo caso ele venha configurado incorretamente
+if "+psycopg2" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("+psycopg2", "+psycopg")
 
 # Configuração crítica de resiliência para o pooler (PgBouncer) do Neon.tech.
-# pool_size=0 e max_overflow=0 fazem o SQLAlchemy não manter conexões próprias
-# em cache, delegando totalmente o pooling ao PgBouncer do Neon, evitando
-# erros de "prepared statement already exists" e conexões zumbis.
-# pool_pre_ping=True testa a conexão antes de cada uso, evitando falhas
-# por conexões que o pooler já derrubou silenciosamente.
 engine = create_engine(
     DATABASE_URL,
     pool_size=0,
     max_overflow=0,
     pool_pre_ping=True,
     pool_recycle=300,
-    connect_args={
-        "sslmode": "require",
-        "connect_timeout": 10,
-    },
     echo=False,
 )
 
