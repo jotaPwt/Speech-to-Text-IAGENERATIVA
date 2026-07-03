@@ -53,52 +53,53 @@ def renderizar_aba_visao(controller: AnaliseController) -> None:
         "luminosidade, cor predominante e detectará rostos automaticamente."
     )
 
-    # Container dedicado para fixar o componente de webcam e evitar quebra no DOM do navegador
-    container_camera = st.container()
-    with container_camera:
-        imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_principal")
+    # 1. Criamos áreas fixas na tela. Elementos estruturais fixos não quebram o DOM!
+    zona_camera = st.container()
+    zona_status = st.container()
+    zona_resultados = st.container()
 
-    # Gerenciamento seguro através de Session State para evitar conflitos de renderização de abas
+    with zona_camera:
+        # Mantemos a câmera em um lugar isolado e fixo
+        imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_estavel_fixa")
+
+    # 2. Só executamos a lógica se a imagem existir no buffer, sem criar botões fantasmas
     if imagem_capturada is not None:
-        st.session_state["frame_imagem"] = imagem_capturada
+        bytes_imagem = imagem_capturada.getvalue()
+        nome_arquivo = imagem_capturada.name or "captura.jpg"
 
-    if "frame_imagem" in st.session_state and st.session_state["frame_imagem"] is not None:
-        st.success("Imagem carregada no buffer temporário!")
-        
-        if st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_processar_visao_estatico"):
-            with st.spinner("Processando imagem com OpenCV..."):
-                bytes_imagem = st.session_state["frame_imagem"].getvalue()
-                resultado = controller.processar_e_salvar(
-                    bytes_imagem, st.session_state["frame_imagem"].name or "captura.jpg"
-                )
+        # Criamos o botão de ação dentro da zona de status de forma isolada
+        with zona_status:
+            executar_analise = st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_disparar_pipeline")
 
-            if resultado:
-                st.success(f"Imagem processada e salva com sucesso! ID={resultado['id']}")
+        if executar_analise:
+            with zona_resultados:
+                with st.spinner("Processando imagem com OpenCV..."):
+                    resultado = controller.processar_e_salvar(bytes_imagem, nome_arquivo)
 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
-                col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
-                col3.metric("Rostos Detectados", resultado["rostos_detectados"])
-                col4.metric("Resolução", resultado["resolucao"])
+                if resultado:
+                    st.success(f"Imagem processada e salva com sucesso! ID={resultado['id']}")
 
-                st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
+                    # Renderização das métricas de forma limpa
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
+                    col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
+                    col3.metric("Rostos Detectados", resultado["rostos_detectados"])
+                    col4.metric("Resolução", resultado["resolucao"])
 
-                swatch_html = (
-                    f'<div style="width:100px;height:40px;border-radius:6px;'
-                    f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
-                )
-                st.markdown(swatch_html, unsafe_allow_html=True)
+                    st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
 
-                if resultado["rostos_detectados"] == 0:
-                    st.warning("Nenhum rosto foi detectado na imagem.")
+                    swatch_html = (
+                        f'<div style="width:100px;height:40px;border-radius:6px;'
+                        f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
+                    )
+                    st.markdown(swatch_html, unsafe_allow_html=True)
+
+                    if resultado["rostos_detectados"] == 0:
+                        st.warning("Nenhum rosto foi detectado na imagem.")
+                    else:
+                        st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
                 else:
-                    st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
-                
-                # Limpa o buffer de imagem processada e força a atualização limpa da interface
-                st.session_state["frame_imagem"] = None
-                st.rerun()
-            else:
-                st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
+                    st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
 
 
 def renderizar_aba_audio(controller: AudioController) -> None:
