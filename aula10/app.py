@@ -55,8 +55,8 @@ def renderizar_fluxo_visao(controller: AnaliseController) -> None:
 
     imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_isolada_das_tabs")
 
-    # Guardamos os resultados no session_state para exibi-los sem travar o componente de câmera
-    if "ultimo_resultado_visao" not_in st.session_state:
+    # CORRIGIDO: operador 'not in' separado corretamente por espaço
+    if "ultimo_resultado_visao" not in st.session_state:
         st.session_state["ultimo_resultado_visao"] = None
 
     if imagem_capturada is not None:
@@ -69,12 +69,10 @@ def renderizar_fluxo_visao(controller: AnaliseController) -> None:
                 
             if resultado:
                 st.session_state["ultimo_resultado_visao"] = resultado
-                # O rerun limpa o ciclo do React do camera_input evitando o erro de removeChild
                 st.rerun()
             else:
                 st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
 
-    # Renderiza os resultados salvos fora do ciclo de envio da imagem
     if st.session_state["ultimo_resultado_visao"] is not None:
         resultado = st.session_state["ultimo_resultado_visao"]
         st.divider()
