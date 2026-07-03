@@ -53,14 +53,23 @@ def renderizar_aba_visao(controller: AnaliseController) -> None:
         "luminosidade, cor predominante e detectará rostos automaticamente."
     )
 
-    imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="camera_visao")
+    # Container dedicado para fixar o componente de webcam e evitar quebra no DOM do navegador
+    container_camera = st.container()
+    with container_camera:
+        imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_principal")
 
+    # Gerenciamento seguro através de Session State para evitar conflitos de renderização de abas
     if imagem_capturada is not None:
-        if st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_processar_imagem"):
+        st.session_state["frame_imagem"] = imagem_capturada
+
+    if "frame_imagem" in st.session_state and st.session_state["frame_imagem"] is not None:
+        st.success("Imagem carregada no buffer temporário!")
+        
+        if st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_processar_visao_estatico"):
             with st.spinner("Processando imagem com OpenCV..."):
-                bytes_imagem = imagem_capturada.getvalue()
+                bytes_imagem = st.session_state["frame_imagem"].getvalue()
                 resultado = controller.processar_e_salvar(
-                    bytes_imagem, imagem_capturada.name or "captura.jpg"
+                    bytes_imagem, st.session_state["frame_imagem"].name or "captura.jpg"
                 )
 
             if resultado:
@@ -84,6 +93,10 @@ def renderizar_aba_visao(controller: AnaliseController) -> None:
                     st.warning("Nenhum rosto foi detectado na imagem.")
                 else:
                     st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
+                
+                # Limpa o buffer de imagem processada e força a atualização limpa da interface
+                st.session_state["frame_imagem"] = None
+                st.rerun()
             else:
                 st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
 
@@ -95,12 +108,12 @@ def renderizar_aba_audio(controller: AudioController) -> None:
         "em Português do Brasil."
     )
 
-    audio_capturado = st.audio_input("Gravar áudio pelo microfone", key="audio_stt")
+    audio_capturado = st.audio_input("Gravar áudio pelo microfone", key="audio_stt_estatico")
 
     if audio_capturado is not None:
         st.audio(audio_capturado)
 
-        if st.button("📝 Transcrever e Salvar Áudio", type="primary", key="btn_processar_audio"):
+        if st.button("📝 Transcrever e Salvar Áudio", type="primary", key="btn_processar_audio_estatico"):
             with st.spinner("Transcrevendo áudio, aguarde..."):
                 bytes_audio = audio_capturado.getvalue()
                 resultado = controller.processar_e_salvar(bytes_audio, "gravacao.wav")
