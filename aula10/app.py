@@ -46,60 +46,47 @@ def renderizar_cabecalho() -> None:
     st.divider()
 
 
-def renderizar_aba_visao(controller: AnaliseController) -> None:
+def renderizar_fluxo_visao(controller: AnaliseController) -> None:
     st.subheader("📷 Captura e Análise de Imagem")
     st.write(
         "Utilize sua webcam para capturar uma imagem. O sistema calculará nitidez, "
         "luminosidade, cor predominante e detectará rostos automaticamente."
     )
 
-    # 1. Criamos áreas fixas na tela. Elementos estruturais fixos não quebram o DOM!
-    zona_camera = st.container()
-    zona_status = st.container()
-    zona_resultados = st.container()
+    # Input isolado de abas para proteger a árvore de nós DOM do React
+    imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_isolada_das_tabs")
 
-    with zona_camera:
-        # Mantemos a câmera em um lugar isolado e fixo
-        imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_estavel_fixa")
-
-    # 2. Só executamos a lógica se a imagem existir no buffer, sem criar botões fantasmas
     if imagem_capturada is not None:
-        bytes_imagem = imagem_capturada.getvalue()
-        nome_arquivo = imagem_capturada.name or "captura.jpg"
+        if st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_processar_imagem_seguro"):
+            with st.spinner("Processando imagem com OpenCV..."):
+                bytes_imagem = imagem_capturada.getvalue()
+                resultado = controller.processar_e_salvar(
+                    bytes_imagem, imagem_capturada.name or "captura.jpg"
+                )
 
-        # Criamos o botão de ação dentro da zona de status de forma isolada
-        with zona_status:
-            executar_analise = st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_disparar_pipeline")
+            if resultado:
+                st.success(f"Imagem processada e salva com sucesso! ID={resultado['id']}")
 
-        if executar_analise:
-            with zona_resultados:
-                with st.spinner("Processando imagem com OpenCV..."):
-                    resultado = controller.processar_e_salvar(bytes_imagem, nome_arquivo)
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
+                col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
+                col3.metric("Rostos Detectados", resultado["rostos_detectados"])
+                col4.metric("Resolução", resultado["resolucao"])
 
-                if resultado:
-                    st.success(f"Imagem processada e salva com sucesso! ID={resultado['id']}")
+                st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
 
-                    # Renderização das métricas de forma limpa
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
-                    col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
-                    col3.metric("Rostos Detectados", resultado["rostos_detectados"])
-                    col4.metric("Resolução", resultado["resolucao"])
+                swatch_html = (
+                    f'<div style="width:100px;height:40px;border-radius:6px;'
+                    f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
+                )
+                st.markdown(swatch_html, unsafe_allow_html=True)
 
-                    st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
-
-                    swatch_html = (
-                        f'<div style="width:100px;height:40px;border-radius:6px;'
-                        f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
-                    )
-                    st.markdown(swatch_html, unsafe_allow_html=True)
-
-                    if resultado["rostos_detectados"] == 0:
-                        st.warning("Nenhum rosto foi detectado na imagem.")
-                    else:
-                        st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
+                if resultado["rostos_detectados"] == 0:
+                    st.warning("Nenhum rosto foi detectado na imagem.")
                 else:
-                    st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
+                    st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
+            else:
+                st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
 
 
 def renderizar_aba_audio(controller: AudioController) -> None:
@@ -109,12 +96,12 @@ def renderizar_aba_audio(controller: AudioController) -> None:
         "em Português do Brasil."
     )
 
-    audio_capturado = st.audio_input("Gravar áudio pelo microfone", key="audio_stt_estatico")
+    audio_capturado = st.audio_input("Gravar áudio pelo microfone", key="audio_stt")
 
     if audio_capturado is not None:
         st.audio(audio_capturado)
 
-        if st.button("📝 Transcrever e Salvar Áudio", type="primary", key="btn_processar_audio_estatico"):
+        if st.button("📝 Transcrever e Salvar Áudio", type="primary", key="btn_processar_audio"):
             with st.spinner("Transcrevendo áudio, aguarde..."):
                 bytes_audio = audio_capturado.getvalue()
                 resultado = controller.processar_e_salvar(bytes_audio, "gravacao.wav")
@@ -257,6 +244,7 @@ def main() -> None:
     analise_controller = obter_analise_controller()
     audio_controller = obter_audio_controller()
 
+    # Menu de navegação lateral para estabilizar os estados de renderização
     with st.sidebar:
         st.header("⚙️ Navegação")
         st.markdown(
@@ -264,29 +252,31 @@ def main() -> None:
             "e **PostgreSQL (Neon.tech)**."
         )
         st.divider()
-        st.markdown("**Módulos disponíveis:**")
-        st.markdown("- 📷 Visão Computacional\n- 🎙️ Transcrição de Áudio\n- 📊 Dashboards e Histórico")
+        
+        modulo_ativo = st.radio(
+            "Selecione o Módulo Ativo:",
+            ["📷 Visão Computacional", "🎙️ Transcrição de Áudio", "📊 Painéis e Histórico"],
+            key="menu_navegacao_principal"
+        )
 
-    aba_visao, aba_audio, aba_dashboard_visao, aba_dashboard_audio = st.tabs(
-        [
-            "📷 Captura de Imagem",
-            "🎙️ Captura de Áudio",
-            "📊 Dashboard - Imagens",
-            "📊 Dashboard - Áudio",
-        ]
-    )
-
-    with aba_visao:
-        renderizar_aba_visao(analise_controller)
-
-    with aba_audio:
+    # Roteamento baseado na escolha lateral
+    if modulo_ativo == "📷 Visão Computacional":
+        renderizar_fluxo_visao(analise_controller)
+        
+    elif modulo_ativo == "🎙️ Transcrição de Áudio":
         renderizar_aba_audio(audio_controller)
-
-    with aba_dashboard_visao:
-        renderizar_aba_dashboard_visao(analise_controller)
-
-    with aba_dashboard_audio:
-        renderizar_aba_dashboard_audio(audio_controller)
+        
+    elif modulo_ativo == "📊 Painéis e Histórico":
+        aba_dashboard_visao, aba_dashboard_audio = st.tabs(
+            [
+                "📊 Dashboard - Imagens",
+                "📊 Dashboard - Áudio",
+            ]
+        )
+        with aba_dashboard_visao:
+            renderizar_aba_dashboard_visao(analise_controller)
+        with aba_dashboard_audio:
+            renderizar_aba_dashboard_audio(audio_controller)
 
 
 if __name__ == "__main__":
