@@ -53,8 +53,11 @@ def renderizar_fluxo_visao(controller: AnaliseController) -> None:
         "luminosidade, cor predominante e detectará rostos automaticamente."
     )
 
-    # Input isolado de abas para proteger a árvore de nós DOM do React
     imagem_capturada = st.camera_input("Capturar imagem pela webcam", key="webcam_isolada_das_tabs")
+
+    # Guardamos os resultados no session_state para exibi-los sem travar o componente de câmera
+    if "ultimo_resultado_visao" not_in st.session_state:
+        st.session_state["ultimo_resultado_visao"] = None
 
     if imagem_capturada is not None:
         if st.button("🔍 Processar e Salvar Imagem", type="primary", key="btn_processar_imagem_seguro"):
@@ -63,30 +66,42 @@ def renderizar_fluxo_visao(controller: AnaliseController) -> None:
                 resultado = controller.processar_e_salvar(
                     bytes_imagem, imagem_capturada.name or "captura.jpg"
                 )
-
+                
             if resultado:
-                st.success(f"Imagem processada e salva com sucesso! ID={resultado['id']}")
-
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
-                col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
-                col3.metric("Rostos Detectados", resultado["rostos_detectados"])
-                col4.metric("Resolução", resultado["resolucao"])
-
-                st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
-
-                swatch_html = (
-                    f'<div style="width:100px;height:40px;border-radius:6px;'
-                    f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
-                )
-                st.markdown(swatch_html, unsafe_allow_html=True)
-
-                if resultado["rostos_detectados"] == 0:
-                    st.warning("Nenhum rosto foi detectado na imagem.")
-                else:
-                    st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
+                st.session_state["ultimo_resultado_visao"] = resultado
+                # O rerun limpa o ciclo do React do camera_input evitando o erro de removeChild
+                st.rerun()
             else:
                 st.error("Ocorreu um erro ao processar a imagem. Verifique os logs do sistema.")
+
+    # Renderiza os resultados salvos fora do ciclo de envio da imagem
+    if st.session_state["ultimo_resultado_visao"] is not None:
+        resultado = st.session_state["ultimo_resultado_visao"]
+        st.divider()
+        st.success(f"Última imagem processada e salva com sucesso! ID={resultado['id']}")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Nitidez (Var. Laplaciana)", f"{resultado['nitidez']:.2f}")
+        col2.metric("Luminosidade Média", f"{resultado['luminosidade_media']:.2f}")
+        col3.metric("Rostos Detectados", resultado["rostos_detectados"])
+        col4.metric("Resolução", resultado["resolucao"])
+
+        st.markdown(f"**Cor Predominante:** `{resultado['cor_predominante']}`")
+
+        swatch_html = (
+            f'<div style="width:100px;height:40px;border-radius:6px;'
+            f'background:{resultado["cor_predominante"]};border:1px solid #ccc;"></div>'
+        )
+        st.markdown(swatch_html, unsafe_allow_html=True)
+
+        if resultado["rostos_detectados"] == 0:
+            st.warning("Nenhum rosto foi detectado na imagem.")
+        else:
+            st.info(f"{resultado['rostos_detectados']} rosto(s) detectado(s) na imagem.")
+            
+        if st.button("Clear / Nova Captura", key="btn_limpar_resultado"):
+            st.session_state["ultimo_resultado_visao"] = None
+            st.rerun()
 
 
 def renderizar_aba_audio(controller: AudioController) -> None:
@@ -244,7 +259,6 @@ def main() -> None:
     analise_controller = obter_analise_controller()
     audio_controller = obter_audio_controller()
 
-    # Menu de navegação lateral para estabilizar os estados de renderização
     with st.sidebar:
         st.header("⚙️ Navegação")
         st.markdown(
@@ -259,7 +273,6 @@ def main() -> None:
             key="menu_navegacao_principal"
         )
 
-    # Roteamento baseado na escolha lateral
     if modulo_ativo == "📷 Visão Computacional":
         renderizar_fluxo_visao(analise_controller)
         
